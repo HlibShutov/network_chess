@@ -1,12 +1,13 @@
-import pygame
+import pygame 
+import sys
+import socket
 from draw_chessboard import *
 from pieces import *
 from create_pieces import *
-from copy import deepcopy as dc
 from game_functions import *
 pygame.init()
 
-
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 sc = pygame.display.set_mode((400,400))
 clock = pygame.time.Clock()
@@ -34,8 +35,53 @@ def draw_figures(all_pieces):
         sc.blit(i.image, i.rect)
         pygame.display.flip()
 draw_figures(all_pieces)
+
+if len(sys.argv) == 1:
+    HOST = '127.0.0.1'
+    for port in range(49152, 65535):
+        if sock.connect_ex(('127.0.0.1', port)):
+            PORT = port
+            sock.close()
+            break
+        sock.close()
+    else: 
+        print('no available port')
+        exit()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind((HOST, PORT))
+        print(f"server started on {HOST}:{PORT}")
+    except:
+        print(f"error while starting server on {HOST}:{PORT}")
+        exit()
+
+    sock.listen(5)
+    client, address = sock.accept()
+    print(f"user connected on address: {address[0]}:{address[1]}")
+
 while True:
     for event in pygame.event.get():
+        if move_color == 'black':
+            data = client.recv(256).decode()
+            if data:
+                piece_x, piece_y, new_x, new_y = list(map(int, data.split(' ')))
+                for piece in all_pieces:
+                    if (piece.x, piece.y) == (piece_x, piece_y):
+                        moved_piece = piece
+                    if (piece.x, piece.y) == (new_x, new_y):
+                        captured_piece = piece
+                        print('sigma')
+
+                moved_piece.move(new_x, new_y, bool(captured_piece), figures_coordinates)
+                if isinstance(moved_piece, Rook):
+                    king = [i for i in all_pieces if isinstance(i, King) and i.color == 'black'][0]
+                    if moved_piece.x == 0: king.long_castle = False
+                    if moved_piece.x == 7: king.short_castle = False
+                if captured_piece:
+                    all_pieces.remove(captured_piece)
+                    if isinstance(captured_piece, Pawn): all_pawns.remove(captured_piece)
+                move_color = 'white'
+                draw_figures(all_pieces)
         if event.type == pygame.QUIT:
             exit()
 
@@ -43,6 +89,9 @@ while True:
             pos = pygame.mouse.get_pos()
             figures_coordinates = [(i.x, i.y) for i in all_pieces]
             #print(check_mate(all_pieces, move_color, figures_coordinates)) 
+            if move_color != 'white': 
+                continue
+
             if selected_piece == None:
                 for piece in all_pieces:
                     if piece.rect.collidepoint(pos):
@@ -153,7 +202,7 @@ while True:
                     #if isinstance(captured_piece, Knight): all_knights.remove(captured_piece)
                     #if isinstance(captured_piece, Bishop): all_bishops.remove(captured_piece)
                     #if isinstance(captured_piece, Rook): all_rooks.remove(captured_piece)
-                move_color = 'white' if move_color == 'black' else 'black'
+                move_color = 'black'
                 selected_piece = None
                 draw_figures(all_pieces)
 
