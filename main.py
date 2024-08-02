@@ -76,7 +76,7 @@ while True:
                 if isinstance(moved_piece, Pawn):
                     for piece in all_pieces:
                         if isinstance(piece, Pawn):
-                            if piece.get_enpassant() and piece.x == new_x and ((piece.y == new_y+1 and piece.color == 'black')):
+                            if piece.get_enpassant() and piece.x == new_x and ((piece.y == new_y-1 and piece.color == 'white')):
                                 captured_piece = piece
                     moved_piece.move(new_x, new_y, bool(captured_piece), figures_coordinates)
                     if promote_piece:
