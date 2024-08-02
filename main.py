@@ -64,22 +64,60 @@ while True:
         if move_color == 'black':
             data = client.recv(256).decode()
             if data:
-                piece_x, piece_y, new_x, new_y = list(map(int, data.split(' ')))
+                piece_x, piece_y, new_x, new_y, promote_piece = list(map(int, data.split(' ')[:4])) + data.split(' ')[4:]
+                captured_piece = None
                 for piece in all_pieces:
                     if (piece.x, piece.y) == (piece_x, piece_y):
                         moved_piece = piece
                     if (piece.x, piece.y) == (new_x, new_y):
                         captured_piece = piece
                         print('sigma')
-
-                moved_piece.move(new_x, new_y, bool(captured_piece), figures_coordinates)
-                if isinstance(moved_piece, Rook):
-                    king = [i for i in all_pieces if isinstance(i, King) and i.color == 'black'][0]
-                    if moved_piece.x == 0: king.long_castle = False
-                    if moved_piece.x == 7: king.short_castle = False
+                
+                if isinstance(moved_piece, Pawn):
+                    for piece in all_pieces:
+                        if isinstance(piece, Pawn):
+                            if piece.get_enpassant() and piece.x == new_x and ((piece.y == new_y+1 and piece.color == 'black')):
+                                captured_piece = piece
+                    moved_piece.move(new_x, new_y, bool(captured_piece), figures_coordinates)
+                    if promote_piece:
+                        match promote_piece:
+                            case 'Queen':
+                                all_pieces.append(Queen(new_x, 'black', y = new_y))
+                            case 'Rook':
+                                all_pieces.append(Rook(new_x, 'black', y = new_y))
+                            case 'Bishop':
+                                all_pieces.append(Bishop(new_x, 'black', y = new_y))
+                            case 'Knight':
+                                all_pieces.append(Knight(new_x, 'black', y = new_y))
+                        all_pieces.remove(moved_piece)
+                        all_pawns.remove(moved_piece)
+                elif isinstance(moved_piece, King):
+                    coordinates = figures_coordinates
+                    pieces = all_pieces
+                    if captured_piece:
+                        coordinates = [i for i in figures_coordinates if i != (captured_piece.x, captured_piece.y)]
+                        pieces = [i for i in all_pieces if i != captured_piece]
+                    move_result = moved_piece.move(new_x, new_y, bool(captured_piece), coordinates, pieces)
+                    if isinstance(move_result, str):
+                        if move_result == 'short':
+                            rook = [i for i in all_pieces if i.x == 7 and isinstance(i, Rook) and i.color == 'black'][0]
+                            rook.x = 5
+                            rook.rect.topleft = (5 * 50, new_y * 50)
+                        elif move_result == 'long':
+                            rook = [i for i in all_pieces if i.x == 0 and isinstance(i, Rook) and i.color == 'black'][0]
+                            rook.x = 3
+                            rook.rect.topleft = (3 * 50, new_y * 50)
+                else:
+                    moved_piece.move(new_x, new_y, bool(captured_piece), figures_coordinates)
+                    if isinstance(moved_piece, Rook):
+                        king = [i for i in all_pieces if isinstance(i, King) and i.color == 'black'][0]
+                        if moved_piece.x == 0: king.long_castle = False
+                        if moved_piece.x == 7: king.short_castle = False
                 if captured_piece:
                     all_pieces.remove(captured_piece)
                     if isinstance(captured_piece, Pawn): all_pawns.remove(captured_piece)
+                for pawn in all_pawns:
+                    pawn.subbstract_enpassant()
                 move_color = 'white'
                 draw_figures(all_pieces)
         if event.type == pygame.QUIT:
@@ -204,6 +242,8 @@ while True:
                     #if isinstance(captured_piece, Rook): all_rooks.remove(captured_piece)
                 move_color = 'black'
                 selected_piece = None
+                for pawn in all_pawns:
+                    pawn.subbstract_enpassant()
                 draw_figures(all_pieces)
 
     sc.fill((0, 0, 0))
