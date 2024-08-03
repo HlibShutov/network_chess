@@ -92,8 +92,9 @@ while True:
                 if isinstance(moved_piece, Pawn):
                     for piece in all_pieces:
                         if isinstance(piece, Pawn):
-                            if piece.get_enpassant() and piece.x == new_x and ((piece.y == new_y-1 and piece.color == player_color)):
-                                captured_piece = piece
+                            if piece.get_enpassant() and piece.x == new_x and piece.color == player_color:
+                                if (piece.y == new_y-1 and piece.color == 'white') or (piece.y == new_y+1 and piece.color == 'black'):
+                                    captured_piece = piece
                     moved_piece.move(new_x, new_y, bool(captured_piece), figures_coordinates)
                     if promote_piece:
                         match promote_piece:
@@ -134,15 +135,14 @@ while True:
                     if isinstance(captured_piece, Pawn): all_pawns.remove(captured_piece)
                 for pawn in all_pawns:
                     pawn.subbstract_enpassant()
-                move_color = player_color
                 draw_figures(all_pieces)
+                move_color = player_color
         if event.type == pygame.QUIT:
             exit()
 
         elif event.type == pygame.MOUSEBUTTONDOWN:
             pos = pygame.mouse.get_pos()
             figures_coordinates = [(i.x, i.y) for i in all_pieces]
-            #print(check_mate(all_pieces, move_color, figures_coordinates)) 
             if move_color != player_color: 
                 continue
 
@@ -155,6 +155,8 @@ while True:
                 captured_piece = None
                 new_x = pos[0] // 50
                 new_y = pos[1] // 50
+                old_x, old_y = selected_piece.x, selected_piece.y
+                figure = ''
                 if isinstance(selected_piece, Pawn):
                     for piece in all_pieces:
                         if isinstance(piece, Pawn):
@@ -167,11 +169,9 @@ while True:
                         print('check')
                         selected_piece = None
                         continue                   
-                    old_x, old_y = selected_piece.x, selected_piece.y
                     if not selected_piece.move(new_x, new_y, bool(captured_piece), figures_coordinates):
                         selected_piece = None
                         continue
-                    figure = ''
                     if (selected_piece.color == 'black' and new_y == 7) or (selected_piece.color == 'white' and new_y == 0):
                         figure = promote_pawn_dialog(sc)
                         match figure:
@@ -185,17 +185,6 @@ while True:
                                 all_pieces.append(Knight(new_x, selected_piece.color, y = new_y))
                         all_pieces.remove(selected_piece)
                         all_pawns.remove(selected_piece)
-                    if captured_piece:
-                        all_pieces.remove(captured_piece)
-                        if isinstance(captured_piece, Pawn): all_pawns.remove(captured_piece)
-                        #if isinstance(captured_piece, Knight): all_knights.remove(captured_piece)
-                    move_color = opponent_color
-                    selected_piece = None
-                    draw_figures(all_pieces)
-                    for pawn in all_pawns:
-                        pawn.subbstract_enpassant()
-                    client.send(bytes(f"{old_x} {old_y} {new_x} {new_y} {figure}", "utf-8"))
-                    continue
                 elif isinstance(selected_piece, King):
                     coordinates = figures_coordinates
                     pieces = all_pieces
@@ -206,7 +195,6 @@ while True:
                                 captured_piece = piece
                                 coordinates = [i for i in figures_coordinates if i != (captured_piece.x, captured_piece.y)]
                                 pieces = [i for i in all_pieces if i != captured_piece]
-                    old_x, old_y = selected_piece.x, selected_piece.x
                     move_result = selected_piece.move(new_x, new_y, bool(captured_piece), coordinates, pieces)
                     if not move_result:
                         selected_piece = None
@@ -220,51 +208,31 @@ while True:
                             rook = [i for i in all_pieces if i.x == 0 and isinstance(i, Rook) and i.color == selected_piece.color][0]
                             rook.x = 3
                             rook.rect.topleft = (3 * 50, new_y * 50)
-                        move_color = opponent_color
+                else:
+                    for piece in all_pieces:
+                        if (piece.x == new_x and piece.y == new_y and piece.color != selected_piece.color):
+                            captured_piece = piece
+                            figures_coordinates.remove((captured_piece.x, captured_piece.y))
+                    if simulate_move_and_check_king(selected_piece, new_x, new_y, all_pieces, figures_coordinates, captured_piece):
+                        print('check')
                         selected_piece = None
-                        draw_figures(all_pieces)
-                        for pawn in all_pawns:
-                            pawn.subbstract_enpassant()
+                        continue                   
+                    if not selected_piece.move(new_x, new_y, bool(captured_piece), figures_coordinates):
+                        selected_piece = None
                         continue
+                    if isinstance(selected_piece, Rook):
+                        king = [i for i in all_pieces if isinstance(i, King) and i.color == selected_piece.color][0]
+                        if selected_piece.x == 0: king.long_castle = False
+                        if selected_piece.x == 7: king.short_castle = False
 
-                    move_color = opponent_color
-                    if captured_piece:
-                        all_pieces.remove(captured_piece)
-                    selected_piece = None
-                    draw_figures(all_pieces)
-                    for pawn in all_pawns:
-                        pawn.subbstract_enpassant()
-                    client.send(bytes(f"{old_x} {old_y} {new_x} {new_y} ", "utf-8"))
-                    continue
-                for piece in all_pieces:
-                    if (piece.x == new_x and piece.y == new_y and piece.color != selected_piece.color):
-                        captured_piece = piece
-                        figures_coordinates.remove((captured_piece.x, captured_piece.y))
-
-                
-                if simulate_move_and_check_king(selected_piece, new_x, new_y, all_pieces, figures_coordinates, captured_piece):
-                    print('check')
-                    selected_piece = None
-                    continue                   
-                old_x, old_y = selected_piece.x, selected_piece.y
-                if not selected_piece.move(new_x, new_y, bool(captured_piece), figures_coordinates):
-                    selected_piece = None
-                    continue
-                if isinstance(selected_piece, Rook):
-                    king = [i for i in all_pieces if isinstance(i, King) and i.color == selected_piece.color][0]
-                    if selected_piece.x == 0: king.long_castle = False
-                    if selected_piece.x == 7: king.short_castle = False
                 if captured_piece:
                     all_pieces.remove(captured_piece)
                     if isinstance(captured_piece, Pawn): all_pawns.remove(captured_piece)
-                    #if isinstance(captured_piece, Knight): all_knights.remove(captured_piece)
-                    #if isinstance(captured_piece, Bishop): all_bishops.remove(captured_piece)
-                    #if isinstance(captured_piece, Rook): all_rooks.remove(captured_piece)
                 move_color = opponent_color
                 selected_piece = None
                 for pawn in all_pawns:
                     pawn.subbstract_enpassant()
-                client.send(bytes(f"{old_x} {old_y} {new_x} {new_y} ", "utf-8"))
+                client.send(bytes(f"{old_x} {old_y} {new_x} {new_y} {figure}", "utf-8"))
                 draw_figures(all_pieces)
 
     sc.fill((0, 0, 0))
