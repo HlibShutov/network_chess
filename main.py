@@ -10,7 +10,6 @@ from decrypt import decrypt
 from encrypt import encrypt
 from hashlib import md5
 from sending_messages import send
-from recieving_messages import recieve
 from threading import Thread
 
 pygame.init()
@@ -39,6 +38,19 @@ all_queens = create_queens()
 all_kings = create_kings()
 all_pieces = all_pawns + all_knights + all_bishops + all_rooks + all_queens + all_kings
 figures_coordinates = [(i.x, i.y) for i in all_pieces]
+
+def recieve(key, client):
+    global data
+    while True:
+        message = client.recv(256).decode()
+        if message:
+            if message[:8] != "message:": 
+                data = message
+            else:
+                message = message[8:]
+                message = decrypt(key, message)
+                print(f'{client.getpeername()[0]}:{client.getpeername()[1]} -', message)
+                data = None
 
 def draw_figures(all_pieces):
     chessboard(sc, WHITE, GREEN)
@@ -97,22 +109,8 @@ else:
     print('error')
     exit()
 
-
-def recieve(key, client):
-    global data
-    while True:
-        message = client.recv(256).decode()
-        if message:
-            if message[:8] != "message:": 
-                data = message
-            else:
-                message = message[8:]
-                message = decrypt(key, message)
-                print(f'{client.getpeername()[0]}:{client.getpeername()[1]} -', message)
-                data = None
-
-send_thread = Thread(target=send, args=(opponent_public_key, client))
-recieve_thread = Thread(target=recieve, args=(private_key, client))
+send_thread = Thread(target=send, args=(opponent_public_key, client), daemon=True)
+recieve_thread = Thread(target=recieve, args=(private_key, client), daemon=True)
 send_thread.start()
 recieve_thread.start()
 
@@ -168,6 +166,7 @@ while True:
                                 rook.x = 3
                                 rook.rect.topleft = (3 * 50, new_y * 50)
                     else:
+                        if captured_piece: figures_coordinates.remove((captured_piece.x, captured_piece.y))
                         moved_piece.move(new_x, new_y, bool(captured_piece), figures_coordinates)
                         if isinstance(moved_piece, Rook):
                             king = [i for i in all_pieces if isinstance(i, King) and i.color == opponent_color][0]
