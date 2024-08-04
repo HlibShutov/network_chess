@@ -9,6 +9,9 @@ from generate_keys import keys_generator
 from decrypt import decrypt
 from encrypt import encrypt
 from hashlib import md5
+from sending_messages import send
+from recieving_messages import recieve
+from threading import Thread
 
 pygame.init()
 
@@ -92,6 +95,10 @@ else:
     print('error')
     exit()
 
+# send_thread = Thread(target=send, args=(opponent_public_key, client))
+# recieve_thread = Thread(target=recieve, args=(private_key, client))
+# send_thread.start()
+# recieve_thread.start()
 
 while True:
     for event in pygame.event.get():
