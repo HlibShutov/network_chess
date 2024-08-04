@@ -24,6 +24,8 @@ FPS = 30
 WHITE = (250, 250, 250)
 GREEN = (0, 128, 0)
 
+data = None
+
 chessboard(sc, WHITE, GREEN)
 
 selected_piece = None
@@ -95,15 +97,29 @@ else:
     print('error')
     exit()
 
-# send_thread = Thread(target=send, args=(opponent_public_key, client))
-# recieve_thread = Thread(target=recieve, args=(private_key, client))
-# send_thread.start()
-# recieve_thread.start()
+
+def recieve(key, client):
+    global data
+    while True:
+        message = client.recv(256).decode()
+        if message:
+            if message[:8] != "message:": 
+                data = message
+            else:
+                message = message[8:]
+                message = decrypt(key, message)
+                print(f'{client.getpeername()[0]}:{client.getpeername()[1]} -', message)
+                data = None
+
+send_thread = Thread(target=send, args=(opponent_public_key, client))
+recieve_thread = Thread(target=recieve, args=(private_key, client))
+send_thread.start()
+recieve_thread.start()
 
 while True:
     for event in pygame.event.get():
         if move_color == opponent_color:
-            data = client.recv(256).decode()
+            # data = client.recv(256).decode()
             if data:
                 message, sign = data[:8], data[9:]
                 decrypted_sign = decrypt(opponent_public_key, sign)
@@ -165,6 +181,7 @@ while True:
                     draw_figures(all_pieces)
                     move_color = player_color
                 else: print('sign does not match')
+                data = None
         if event.type == pygame.QUIT:
             exit()
 
