@@ -1,6 +1,9 @@
 import pygame 
 import sys
 import socket
+from hashlib import md5
+from threading import Thread
+import time
 from draw_chessboard import *
 from pieces import *
 from create_pieces import *
@@ -8,16 +11,15 @@ from game_functions import *
 from generate_keys import keys_generator
 from decrypt import decrypt
 from encrypt import encrypt
-from hashlib import md5
 from sending_messages import send
-from threading import Thread
 
 pygame.init()
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-sc = pygame.display.set_mode((400,400))
+sc = pygame.display.set_mode((400,500))
 clock = pygame.time.Clock()
+font = pygame.font.Font('freesansbold.ttf', 16)
 FPS = 30
 
 WHITE = (250, 250, 250)
@@ -39,6 +41,18 @@ all_kings = create_kings()
 all_pieces = all_pawns + all_knights + all_bishops + all_rooks + all_queens + all_kings
 figures_coordinates = [(i.x, i.y) for i in all_pieces]
 
+def timer(all_pieces):
+    global player_time
+    global opponent_time
+    global move_color
+    global player_color
+    while True:
+        if move_color == player_color:
+            player_time -= 1
+        else: opponent_time -= 1
+        draw_figures(all_pieces, player_time, opponent_time)
+        time.sleep(1)
+
 def recieve(key, client):
     global data
     while True:
@@ -52,16 +66,25 @@ def recieve(key, client):
                 print(f'{client.getpeername()[0]}:{client.getpeername()[1]} -', message)
                 data = None
 
-def draw_figures(all_pieces):
+def draw_figures(all_pieces, player_time, opponent_time):
     chessboard(sc, WHITE, GREEN)
     for i in all_pieces:
         sc.blit(i.image, i.rect)
-        pygame.display.flip()
-draw_figures(all_pieces)
+    player_timer = font.render(f"Your time: {player_time//60}:{player_time%60}", True, (0, 255, 0))
+    opponent_timer = font.render(f"Opponent time: {opponent_time//60}:{opponent_time%60}", True, (0, 255, 0))
+    player_timer_rect = player_timer.get_rect(center=(100, 450))
+    opponent_timer_rect = opponent_timer.get_rect(center=(300, 450))
+    sc.blit(player_timer, player_timer_rect)
+    sc.blit(opponent_timer, opponent_timer_rect)
+    pygame.display.flip()
 
 public_key, private_key = keys_generator()
 
 if len(sys.argv) == 1:
+    game_time = int(input("Time (minutes): "))
+    player_time = game_time*60
+    opponent_time = game_time*60
+    time_increment = int(input("Increment (seconds): "))
     HOST = '127.0.0.1'
     for port in range(49152, 65535):
         if sock.connect_ex(('127.0.0.1', port)):
@@ -88,6 +111,11 @@ if len(sys.argv) == 1:
     opponent_public_key = client.recv(124).decode()
     opponent_public_key = list(map(int, opponent_public_key.split(' ')))
 
+
+    message = f"{game_time},{time_increment}"
+    sign = encrypt(private_key, md5(message.encode()).hexdigest())
+    client.send(bytes(f"{message},{sign}", "utf-8"))
+
     player_color = 'white'
     opponent_color = 'black'
 elif len(sys.argv) == 3:
@@ -102,6 +130,14 @@ elif len(sys.argv) == 3:
     opponent_public_key = client.recv(124).decode()
     opponent_public_key = list(map(int, opponent_public_key.split(' ')))
     client.send(bytes(' '.join(list(map(str, public_key))), 'utf-8'))
+    
+    message = client.recv(256).decode()
+    message, sign = ','.join(message.split(',')[:2]), message.split(',')[2:] 
+    decrypted_sign = decrypt(opponent_public_key, sign[0])
+    if md5(message.encode()).hexdigest() == decrypted_sign:
+        player_time, time_increment = int(message.split(',')[0])*60, int(message.split(',')[1])
+        opponent_time = player_time
+    else: print('sign does not match')
 
     player_color = 'black'
     opponent_color = 'white'
@@ -109,10 +145,14 @@ else:
     print('error')
     exit()
 
+draw_figures(all_pieces, player_time, opponent_time)
+
 send_thread = Thread(target=send, args=(opponent_public_key, client), daemon=True)
 recieve_thread = Thread(target=recieve, args=(private_key, client), daemon=True)
+timer_thread = Thread(target=timer, args=(all_pieces,), daemon=True)
 send_thread.start()
 recieve_thread.start()
+timer_thread.start()
 
 while True:
     for event in pygame.event.get():
@@ -177,8 +217,9 @@ while True:
                         if isinstance(captured_piece, Pawn): all_pawns.remove(captured_piece)
                     for pawn in all_pawns:
                         pawn.subbstract_enpassant()
-                    draw_figures(all_pieces)
+                    draw_figures(all_pieces, player_time, opponent_time)
                     move_color = player_color
+                    opponent_time+=time_increment
                 else: print('sign does not match')
                 data = None
         if event.type == pygame.QUIT:
@@ -272,13 +313,13 @@ while True:
                     all_pieces.remove(captured_piece)
                     if isinstance(captured_piece, Pawn): all_pawns.remove(captured_piece)
                 move_color = opponent_color
+                player_time += time_increment
                 selected_piece = None
                 for pawn in all_pawns:
                     pawn.subbstract_enpassant()
                 message = f"{old_x},{old_y},{new_x},{new_y},{figure}"
                 sign = encrypt(private_key, md5(message.encode()).hexdigest())
                 client.send(bytes(f"{message},{sign}", "utf-8"))
-                draw_figures(all_pieces)
-
+                draw_figures(all_pieces, player_time, opponent_time)
     sc.fill((0, 0, 0))
     clock.tick(FPS)
