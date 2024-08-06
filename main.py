@@ -211,7 +211,8 @@ while True:
                 decrypted_sign = decrypt(opponent_public_key, sign)
                 if md5(message.encode()).hexdigest() == decrypted_sign:
                     piece_x, piece_y, new_x, new_y, promote_piece = list(map(int, message.split(',')[:4])) + message.split(',')[4:]
-                    
+                    figures_coordinates = [(i.x, i.y) for i in all_pieces]
+
                     # if role == 'server':
                     #     message = f"{piece_x},{piece_y},{new_x},{new_y},{promote_piece}"
                     #     sign = encrypt(private_key, md5(message.encode()).hexdigest())
