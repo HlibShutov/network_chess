@@ -41,23 +41,23 @@ all_kings = create_kings()
 all_pieces = all_pawns + all_knights + all_bishops + all_rooks + all_queens + all_kings
 figures_coordinates = [(i.x, i.y) for i in all_pieces]
 
-spectators = []
+# spectators = []
 
-def handle_spectator(role):
-    global spectators
-    global public_key
-    global sock
-    while True:
-        if role == 'server':
-            sock.listen()
-            client, address = sock.accept()
-            client.send(bytes(' '.join(list(map(str,public_key))), 'utf-8'))
-            opponent_public_key = client.recv(124).decode()
-            opponent_public_key = list(map(int, opponent_public_key.split(' ')))
-            spectators.append([client, opponent_public_key])
-            message = f"{game_time},{time_increment}"
-            sign = encrypt(private_key, md5(message.encode()).hexdigest())
-            client.send(bytes(f"{message},{sign}", "utf-8"))
+# def handle_spectator(role):
+#     global spectators
+#     global public_key
+#     global sock
+#     while True:
+#         if role == 'server':
+#             sock.listen()
+#             client, address = sock.accept()
+#             client.send(bytes(' '.join(list(map(str,public_key))), 'utf-8'))
+#             opponent_public_key = client.recv(124).decode()
+#             opponent_public_key = list(map(int, opponent_public_key.split(' ')))
+#             spectators.append([client, opponent_public_key])
+#             message = f"{game_time},{time_increment}"
+#             sign = encrypt(private_key, md5(message.encode()).hexdigest())
+#             client.send(bytes(f"{message},{sign}", "utf-8"))
 
 def timer(all_pieces):
     global player_time
@@ -163,30 +163,30 @@ elif len(sys.argv) == 3:
     opponent_color = 'white'
 
     role = 'client'
-elif len(sys.argv) == 4:
-    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    HOST, PORT = sys.argv[1], int(sys.argv[2])
-    try:
-        client.connect((HOST, PORT))
-        print('connected to server')
-    except:
-        print('error while connecting to server')
+# elif len(sys.argv) == 4:
+#     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+#     HOST, PORT = sys.argv[1], int(sys.argv[2])
+#     try:
+#         client.connect((HOST, PORT))
+#         print('connected to server')
+#     except:
+#         print('error while connecting to server')
 
-    opponent_public_key = client.recv(124).decode()
-    opponent_public_key = list(map(int, opponent_public_key.split(' ')))
-    client.send(bytes(' '.join(list(map(str, public_key))), 'utf-8'))
+#     opponent_public_key = client.recv(124).decode()
+#     opponent_public_key = list(map(int, opponent_public_key.split(' ')))
+#     client.send(bytes(' '.join(list(map(str, public_key))), 'utf-8'))
     
-    message = client.recv(256).decode()
-    message, sign = ','.join(message.split(',')[:2]), message.split(',')[2:] 
-    decrypted_sign = decrypt(opponent_public_key, sign[0])
-    if md5(message.encode()).hexdigest() == decrypted_sign:
-        player_time, time_increment = int(message.split(',')[0])*60, int(message.split(',')[1])
-        opponent_time = player_time
-    else: print('sign does not match')
+#     message = client.recv(256).decode()
+#     message, sign = ','.join(message.split(',')[:2]), message.split(',')[2:] 
+#     decrypted_sign = decrypt(opponent_public_key, sign[0])
+#     if md5(message.encode()).hexdigest() == decrypted_sign:
+#         player_time, time_increment = int(message.split(',')[0])*60, int(message.split(',')[1])
+#         opponent_time = player_time
+#     else: print('sign does not match')
 
-    player_color = 'black'
-    opponent_color = 'white'
-    role = 'spectator'
+#     player_color = 'black'
+#     opponent_color = 'white'
+#     role = 'spectator'
 else:
     print('error')
     exit()
@@ -196,11 +196,11 @@ draw_figures(all_pieces, player_time, opponent_time)
 send_thread = Thread(target=send, args=(opponent_public_key, client), daemon=True)
 recieve_thread = Thread(target=recieve, args=(private_key, client, role), daemon=True)
 timer_thread = Thread(target=timer, args=(all_pieces,), daemon=True)
-handle_spectator_thread = Thread(target=handle_spectator, args=(role,), daemon=True) 
+# handle_spectator_thread = Thread(target=handle_spectator, args=(role,), daemon=True) 
 send_thread.start()
 recieve_thread.start()
 timer_thread.start()
-handle_spectator_thread.start()
+# handle_spectator_thread.start()
 
 while True:
     for event in pygame.event.get():
@@ -212,13 +212,13 @@ while True:
                 if md5(message.encode()).hexdigest() == decrypted_sign:
                     piece_x, piece_y, new_x, new_y, promote_piece = list(map(int, message.split(',')[:4])) + message.split(',')[4:]
                     
-                    if role == 'server':
-                        message = f"{piece_x},{piece_y},{new_x},{new_y},{promote_piece}"
-                        sign = encrypt(private_key, md5(message.encode()).hexdigest())
-                        client.send(bytes(f"{message},{sign}", "utf-8"))
+                    # if role == 'server':
+                    #     message = f"{piece_x},{piece_y},{new_x},{new_y},{promote_piece}"
+                    #     sign = encrypt(private_key, md5(message.encode()).hexdigest())
+                    #     client.send(bytes(f"{message},{sign}", "utf-8"))
 
-                        for spectator in spectators:
-                            spectator[0].send(bytes(f"{message},{sign}", "utf-8"))
+                    #     for spectator in spectators:
+                    #         spectator[0].send(bytes(f"{message},{sign}", "utf-8"))
 
                     captured_piece = None
 
@@ -379,10 +379,10 @@ while True:
                 sign = encrypt(private_key, md5(message.encode()).hexdigest())
                 client.send(bytes(f"{message},{sign}", "utf-8"))
 
-                if role == 'server':
-                    for spectator in spectators:
-                        spectator[0].send(bytes(f"{message},{sign}", "utf-8"))
-                        print('kys')
+                # if role == 'server':
+                #     for spectator in spectators:
+                #         spectator[0].send(bytes(f"{message},{sign}", "utf-8"))
+                #         print('kys')
 
                 draw_figures(all_pieces, player_time, opponent_time)
     # sc.fill((0, 0, 0))
