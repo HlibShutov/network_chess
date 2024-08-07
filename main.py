@@ -12,10 +12,11 @@ from generate_keys import keys_generator
 from decrypt import decrypt
 from encrypt import encrypt
 from sending_messages import send
+from secure_socket import Secure_socket
 
 pygame.init()
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock = Secure_socket(socket.AF_INET, socket.SOCK_STREAM)
 
 sc = pygame.display.set_mode((400,500))
 clock = pygame.time.Clock()
@@ -71,19 +72,17 @@ def timer(all_pieces):
         draw_figures(all_pieces, player_time, opponent_time)
         time.sleep(1)
 
-def recieve(key, client, role):
+def recieve(key, client, role, opponent_public_key):
     global data
     while True:
-        message = client.recv(256).decode()
-        if message:
-            if message[:8] != "message:": 
-                data = message
-            else:
-                if role != 'spectator':
-                    message = message[8:]
-                    message = decrypt(key, message)
-                    print(f'{client.getpeername()[0]}:{client.getpeername()[1]} -', message)
-                data = None
+        data = client.recieve(256, key, opponent_public_key)
+        if data["message_type"] == "move": 
+            data = data["message_content"]
+        elif data["message_type"] == "message":
+            if role != 'spectator':
+                message = data["message_content"] 
+                print(f'{client.getpeername()[0]}:{client.getpeername()[1]} -', message)
+            data = None
 
 def draw_figures(all_pieces, player_time, opponent_time):
     chessboard(sc, WHITE, GREEN)
@@ -114,7 +113,7 @@ if len(sys.argv) == 1:
     else: 
         print('no available port')
         exit()
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock = Secure_socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         sock.bind((HOST, PORT))
         print(f"server started on {HOST}:{PORT}")
@@ -123,41 +122,28 @@ if len(sys.argv) == 1:
         exit()
 
     sock.listen(5)
-    client, address = sock.accept()
+    client, address, opponent_public_key = sock.accept(public_key)
     print(f"user connected on address: {address[0]}:{address[1]}")
 
-    client.send(bytes(' '.join(list(map(str,public_key))), 'utf-8'))
-    opponent_public_key = client.recv(124).decode()
-    opponent_public_key = list(map(int, opponent_public_key.split(' ')))
-
     message = f"{game_time},{time_increment}"
-    sign = encrypt(private_key, md5(message.encode()).hexdigest())
-    client.send(bytes(f"{message},{sign}", "utf-8"))
+    client.send_move(message, private_key)
 
     player_color = 'white'
     opponent_color = 'black'
 
     role = 'server'
 elif len(sys.argv) == 3:
-    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client = Secure_socket(socket.AF_INET, socket.SOCK_STREAM)
     HOST, PORT = sys.argv[1], int(sys.argv[2])
     try:
-        client.connect((HOST, PORT))
+        opponent_public_key = client.connect((HOST, PORT), public_key)
         print('connected to server')
     except:
         print('error while connecting to server')
 
-    opponent_public_key = client.recv(124).decode()
-    opponent_public_key = list(map(int, opponent_public_key.split(' ')))
-    client.send(bytes(' '.join(list(map(str, public_key))), 'utf-8'))
-    
-    message = client.recv(256).decode()
-    message, sign = ','.join(message.split(',')[:2]), message.split(',')[2:] 
-    decrypted_sign = decrypt(opponent_public_key, sign[0])
-    if md5(message.encode()).hexdigest() == decrypted_sign:
-        player_time, time_increment = int(message.split(',')[0])*60, int(message.split(',')[1])
-        opponent_time = player_time
-    else: print('sign does not match')
+    message = client.recieve(256, private_key, opponent_public_key)["message_content"]
+    player_time, time_increment = int(message.split(',')[0])*60, int(message.split(',')[1])
+    opponent_time = player_time
 
     player_color = 'black'
     opponent_color = 'white'
@@ -194,7 +180,7 @@ else:
 draw_figures(all_pieces, player_time, opponent_time)
 
 send_thread = Thread(target=send, args=(opponent_public_key, client), daemon=True)
-recieve_thread = Thread(target=recieve, args=(private_key, client, role), daemon=True)
+recieve_thread = Thread(target=recieve, args=(private_key, client, role, opponent_public_key), daemon=True)
 timer_thread = Thread(target=timer, args=(all_pieces,), daemon=True)
 # handle_spectator_thread = Thread(target=handle_spectator, args=(role,), daemon=True) 
 send_thread.start()
@@ -207,79 +193,76 @@ while True:
         if move_color == opponent_color or role == 'spectator':
             # data = client.recv(256).decode()
             if data:
-                message, sign = data[:8], data[9:]
-                decrypted_sign = decrypt(opponent_public_key, sign)
-                if md5(message.encode()).hexdigest() == decrypted_sign:
-                    piece_x, piece_y, new_x, new_y, promote_piece = list(map(int, message.split(',')[:4])) + message.split(',')[4:]
-                    figures_coordinates = [(i.x, i.y) for i in all_pieces]
+                message = data
+                piece_x, piece_y, new_x, new_y, promote_piece = list(map(int, message.split(',')[:4])) + message.split(',')[4:]
+                figures_coordinates = [(i.x, i.y) for i in all_pieces]
 
-                    # if role == 'server':
-                    #     message = f"{piece_x},{piece_y},{new_x},{new_y},{promote_piece}"
-                    #     sign = encrypt(private_key, md5(message.encode()).hexdigest())
-                    #     client.send(bytes(f"{message},{sign}", "utf-8"))
+                # if role == 'server':
+                #     message = f"{piece_x},{piece_y},{new_x},{new_y},{promote_piece}"
+                #     sign = encrypt(private_key, md5(message.encode()).hexdigest())
+                #     client.send(bytes(f"{message},{sign}", "utf-8"))
 
-                    #     for spectator in spectators:
-                    #         spectator[0].send(bytes(f"{message},{sign}", "utf-8"))
+                #     for spectator in spectators:
+                #         spectator[0].send(bytes(f"{message},{sign}", "utf-8"))
 
-                    captured_piece = None
+                captured_piece = None
 
-                    for piece in all_pieces:
-                        if (piece.x, piece.y) == (piece_x, piece_y):
-                            moved_piece = piece
-                        if (piece.x, piece.y) == (new_x, new_y):
-                            captured_piece = piece
+                for piece in all_pieces:
+                    if (piece.x, piece.y) == (piece_x, piece_y):
+                        moved_piece = piece
+                    if (piece.x, piece.y) == (new_x, new_y):
+                        captured_piece = piece
                 
-                    if isinstance(moved_piece, Pawn):
-                        for piece in all_pieces:
-                            if isinstance(piece, Pawn):
-                                if piece.get_enpassant() and piece.x == new_x and piece.color == player_color:
-                                    if (piece.y == new_y-1 and piece.color == 'white') or (piece.y == new_y+1 and piece.color == 'black'):
-                                        captured_piece = piece
-                        moved_piece.move(new_x, new_y, bool(captured_piece), figures_coordinates)
-                        if promote_piece:
-                            match promote_piece:
-                                case 'Queen':
-                                    all_pieces.append(Queen(new_x, opponent_color, y = new_y))
-                                case 'Rook':
-                                    all_pieces.append(Rook(new_x, opponent_color, y = new_y))
-                                case 'Bishop':
-                                    all_pieces.append(Bishop(new_x, opponent_color, y = new_y))
-                                case 'Knight':
-                                    all_pieces.append(Knight(new_x, opponent_color, y = new_y))
-                            all_pieces.remove(moved_piece)
-                            all_pawns.remove(moved_piece)
-                    elif isinstance(moved_piece, King):
-                        coordinates = figures_coordinates
-                        pieces = all_pieces
-                        if captured_piece:
-                            coordinates = [i for i in figures_coordinates if i != (captured_piece.x, captured_piece.y)]
-                            pieces = [i for i in all_pieces if i != captured_piece]
-                        move_result = moved_piece.move(new_x, new_y, bool(captured_piece), coordinates, pieces)
-                        if isinstance(move_result, str):
-                            if move_result == 'short':
-                                rook = [i for i in all_pieces if i.x == 7 and isinstance(i, Rook) and i.color == opponent_color][0]
-                                rook.x = 5
-                                rook.rect.topleft = (5 * 50, new_y * 50)
-                            elif move_result == 'long':
-                                rook = [i for i in all_pieces if i.x == 0 and isinstance(i, Rook) and i.color == opponent_color][0]
-                                rook.x = 3
-                                rook.rect.topleft = (3 * 50, new_y * 50)
-                    else:
-                        if captured_piece: figures_coordinates.remove((captured_piece.x, captured_piece.y))
-                        moved_piece.move(new_x, new_y, bool(captured_piece), figures_coordinates)
-                        if isinstance(moved_piece, Rook):
-                            king = [i for i in all_pieces if isinstance(i, King) and i.color == opponent_color][0]
-                            if moved_piece.x == 0: king.long_castle = False
-                            if moved_piece.x == 7: king.short_castle = False
+                if isinstance(moved_piece, Pawn):
+                    for piece in all_pieces:
+                        if isinstance(piece, Pawn):
+                            if piece.get_enpassant() and piece.x == new_x and piece.color == player_color:
+                                if (piece.y == new_y-1 and piece.color == 'white') or (piece.y == new_y+1 and piece.color == 'black'):
+                                    captured_piece = piece
+                    moved_piece.move(new_x, new_y, bool(captured_piece), figures_coordinates)
+                    if promote_piece:
+                        match promote_piece:
+                            case 'Queen':
+                                all_pieces.append(Queen(new_x, opponent_color, y = new_y))
+                            case 'Rook':
+                                all_pieces.append(Rook(new_x, opponent_color, y = new_y))
+                            case 'Bishop':
+                                all_pieces.append(Bishop(new_x, opponent_color, y = new_y))
+                            case 'Knight':
+                                all_pieces.append(Knight(new_x, opponent_color, y = new_y))
+                        all_pieces.remove(moved_piece)
+                        all_pawns.remove(moved_piece)
+                elif isinstance(moved_piece, King):
+                    coordinates = figures_coordinates
+                    pieces = all_pieces
                     if captured_piece:
-                        all_pieces.remove(captured_piece)
-                        if isinstance(captured_piece, Pawn): all_pawns.remove(captured_piece)
-                    for pawn in all_pawns:
-                        pawn.subbstract_enpassant()
-                    draw_figures(all_pieces, player_time, opponent_time)
-                    move_color = player_color
-                    opponent_time+=time_increment
-                else: print('sign does not match')
+                        coordinates = [i for i in figures_coordinates if i != (captured_piece.x, captured_piece.y)]
+                        pieces = [i for i in all_pieces if i != captured_piece]
+                    move_result = moved_piece.move(new_x, new_y, bool(captured_piece), coordinates, pieces)
+                    if isinstance(move_result, str):
+                        if move_result == 'short':
+                            rook = [i for i in all_pieces if i.x == 7 and isinstance(i, Rook) and i.color == opponent_color][0]
+                            rook.x = 5
+                            rook.rect.topleft = (5 * 50, new_y * 50)
+                        elif move_result == 'long':
+                            rook = [i for i in all_pieces if i.x == 0 and isinstance(i, Rook) and i.color == opponent_color][0]
+                            rook.x = 3
+                            rook.rect.topleft = (3 * 50, new_y * 50)
+                else:
+                    if captured_piece: figures_coordinates.remove((captured_piece.x, captured_piece.y))
+                    moved_piece.move(new_x, new_y, bool(captured_piece), figures_coordinates)
+                    if isinstance(moved_piece, Rook):
+                        king = [i for i in all_pieces if isinstance(i, King) and i.color == opponent_color][0]
+                        if moved_piece.x == 0: king.long_castle = False
+                        if moved_piece.x == 7: king.short_castle = False
+                if captured_piece:
+                    all_pieces.remove(captured_piece)
+                    if isinstance(captured_piece, Pawn): all_pawns.remove(captured_piece)
+                for pawn in all_pawns:
+                    pawn.subbstract_enpassant()
+                draw_figures(all_pieces, player_time, opponent_time)
+                move_color = player_color
+                opponent_time+=time_increment
                 data = None
         if event.type == pygame.QUIT:
             exit()
@@ -377,8 +360,7 @@ while True:
                 for pawn in all_pawns:
                     pawn.subbstract_enpassant()
                 message = f"{old_x},{old_y},{new_x},{new_y},{figure}"
-                sign = encrypt(private_key, md5(message.encode()).hexdigest())
-                client.send(bytes(f"{message},{sign}", "utf-8"))
+                client.send_move(message, private_key)
 
                 # if role == 'server':
                 #     for spectator in spectators:
